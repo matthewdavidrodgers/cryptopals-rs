@@ -49,8 +49,10 @@ impl ByteBuffer {
     }
 
     pub fn xor_with(&mut self, other: &ByteBuffer) {
+        let mut other_i = 0;
         for i in 0..self.data.len() {
-            self.data[i] = self.data[i] ^ other.data[i];
+            self.data[i] = self.data[i] ^ other.data[other_i];
+            other_i = (other_i + 1) % other.data.len();
         }
     }
 
