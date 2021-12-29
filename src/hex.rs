@@ -45,3 +45,14 @@ pub fn decode(buffer: &ByteBuffer) -> Result<ByteBuffer, DecodeError> {
 
     Ok(decoded)
 }
+
+pub fn encode(buffer: &ByteBuffer) -> ByteBuffer {
+    let mut encoded = ByteBuffer::new_with_size(buffer.data.len() * 2);
+
+    for (i, byte) in buffer.data.iter().enumerate() {
+        encoded.data[i * 2] = HEX_CHAR_INDEXES[(byte >> 4) as usize] as u8;
+        encoded.data[(i * 2) + 1] = HEX_CHAR_INDEXES[(byte & 0x0F) as usize] as u8;
+    }
+
+    encoded
+}
