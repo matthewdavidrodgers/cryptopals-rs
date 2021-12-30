@@ -52,6 +52,13 @@ impl ByteBuffer {
         self.data.retain(|b| *b != byte);
     }
 
+    pub fn pad_for_blocksize(&mut self, blocksize: usize) {
+        if self.data.len() % blocksize != 0 {
+            let pad_by = blocksize - (self.data.len() % blocksize);
+            self.data.append(&mut vec![pad_by as u8; pad_by]);
+        }
+    }
+
     pub fn slice(&self, start: usize, end: usize) -> ByteBuffer {
         assert!(start < end);
 
