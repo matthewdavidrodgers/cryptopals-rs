@@ -48,6 +48,18 @@ impl ByteBuffer {
         ByteBuffer::from_ascii(&file_contents)
     }
 
+    pub fn remove_all(&mut self, byte: u8) {
+        self.data.retain(|b| *b != byte);
+    }
+
+    pub fn slice(&self, start: usize, end: usize) -> ByteBuffer {
+        assert!(start < end);
+
+        ByteBuffer {
+            data: self.data[start..end].to_vec(),
+        }
+    }
+
     pub fn xor_with(&mut self, other: &ByteBuffer) {
         let mut other_i = 0;
         for i in 0..self.data.len() {
@@ -147,4 +159,23 @@ pub fn xor(a: &ByteBuffer, b: &ByteBuffer) -> ByteBuffer {
     result.xor_with(b);
 
     result
+}
+
+pub fn distance(a: &ByteBuffer, b: &ByteBuffer) -> usize {
+    let len = if a.data.len() > b.data.len() {
+        b.data.len()
+    } else {
+        a.data.len()
+    };
+
+    let mut dist = 0usize;
+    for i in 0..len {
+        let mut xored_byte = a.data[i] & b.data[i];
+        while xored_byte != 0 {
+            dist += (xored_byte & 0x01) as usize;
+            xored_byte >>= 1;
+        }
+    }
+
+    dist
 }

@@ -1,6 +1,8 @@
 use crate::byte_buffer;
 use crate::byte_buffer::ByteBuffer;
 
+const KEYSIZES_TAKEN: usize = 10;
+
 const ENGLISH_AVG_CHAR_FREQUENCIES: [f64; 52] = [
     0.082389258,
     0.015051398,
@@ -56,10 +58,17 @@ const ENGLISH_AVG_CHAR_FREQUENCIES: [f64; 52] = [
     0.000746517 * 0.003,
 ];
 
+#[derive(Clone)]
 pub struct DecodeDetails {
     pub key_buffer: ByteBuffer,
     pub plaintext_buffer: ByteBuffer,
     pub score: f64,
+}
+
+#[derive(Debug)]
+struct Keysize {
+    keysize: usize,
+    score: f64,
 }
 
 fn score_buffer_as_english(buffer: &ByteBuffer) -> f64 {
@@ -138,4 +147,118 @@ pub fn decode_sb_xor(cyphertext: &ByteBuffer) -> DecodeDetails {
     }
 
     best_details.unwrap()
+}
+
+fn permutations(x: usize) -> usize {
+    (((x - 1) * (x - 1)) + (x - 1)) / 2
+}
+
+fn pick_rk_xor_keysizes(buffer: &ByteBuffer) -> Vec<Keysize> {
+    let mut keysizes: Vec<Keysize> = Vec::with_capacity(KEYSIZES_TAKEN);
+    let max_keysize = if (buffer.data.len() / 2) < 40 {
+        buffer.data.len() / 2
+    } else {
+        40
+    };
+
+    for keysize in 2..=max_keysize {
+        let num_blocks = buffer.data.len() / keysize;
+        let mut blocks: Vec<ByteBuffer> = Vec::with_capacity(num_blocks);
+
+        for i in 0..num_blocks {
+            blocks.push(buffer.slice(i * keysize, (i + 1) * keysize));
+        }
+
+        let mut block_dis = 0.0;
+        for x in 0..(num_blocks - 1) {
+            for y in x..num_blocks {
+                block_dis +=
+                    (byte_buffer::distance(&blocks[x], &blocks[y]) as f64) / (keysize as f64 * 8.0);
+            }
+        }
+        block_dis /= permutations(num_blocks) as f64;
+
+        let size = Keysize {
+            keysize,
+            score: block_dis,
+        };
+
+        let mut insert_at: Option<usize> = None;
+        let mut index = 0;
+        while index < keysizes.len() && keysizes[index].score > size.score {
+            index += 1;
+        }
+
+        if keysizes.len() < KEYSIZES_TAKEN {
+            insert_at = Some(index);
+        } else if index < keysizes.len() {
+            insert_at = Some(index);
+        }
+
+        if let Some(insert_at) = insert_at {
+            keysizes.insert(insert_at, size);
+        }
+    }
+
+    keysizes
+}
+
+fn break_and_transpose_blocks(buffer: &ByteBuffer, blocksize: usize) -> Vec<ByteBuffer> {
+    let mut blocks = vec![];
+
+    for x in 0..blocksize {
+        let mut block = ByteBuffer::new();
+        let mut y = 0;
+        while (y + x) < buffer.data.len() {
+            block.data.push(buffer.data[y + x]);
+            y += blocksize;
+        }
+        blocks.push(block);
+    }
+
+    blocks
+}
+
+fn decode_rk_xor_for_size(buffer: &ByteBuffer, keysize: usize) -> DecodeDetails {
+    let transposed_blocks = break_and_transpose_blocks(buffer, keysize);
+    let block_details: Vec<_> = transposed_blocks
+        .iter()
+        .map(|block| decode_sb_xor(block))
+        .collect();
+
+    let mut key_buffer = ByteBuffer::new_with_capacity(keysize);
+    for detail in block_details {
+        key_buffer.data.push(detail.key_buffer.data[0]);
+    }
+
+    let plaintext_buffer = byte_buffer::xor(buffer, &key_buffer);
+    let score = score_buffer_as_english(&plaintext_buffer);
+
+    DecodeDetails {
+        key_buffer,
+        plaintext_buffer,
+        score,
+    }
+}
+
+pub fn decode_rk_xor(buffer: &ByteBuffer) -> DecodeDetails {
+    let sizes = pick_rk_xor_keysizes(buffer);
+
+    let mut best_result: Option<DecodeDetails> = None;
+
+    for size in sizes {
+        let result = decode_rk_xor_for_size(buffer, size.keysize);
+
+        if result.score > 0.0 {
+            if let Some(DecodeDetails { score, .. }) = best_result {
+                if score > result.score {
+                    best_result = Some(result.clone());
+                }
+            } else {
+                best_result = Some(result.clone());
+            }
+        }
+    }
+
+    best_result.unwrap()
 }

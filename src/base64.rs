@@ -1,4 +1,5 @@
 use crate::byte_buffer::ByteBuffer;
+use crate::utils::{DecodeError, DecodeType};
 use std::cmp::Ordering;
 
 const BASE64_CHAR_INDEXES: [char; 64] = [
@@ -96,4 +97,52 @@ pub fn encode(buffer: &ByteBuffer) -> ByteBuffer {
     }
 
     encoded
+}
+
+fn base64_char_value(c: char) -> Result<u8, DecodeError> {
+    if let Some(index) = BASE64_CHAR_INDEXES.iter().position(|cc| *cc == c) {
+        Ok(index as u8)
+    } else {
+        Err(DecodeError::new(
+            DecodeType::Base64,
+            &format!("buffer contains invalid base64 characters: ({})", c),
+        ))
+    }
+}
+
+pub fn decode(buffer: &ByteBuffer) -> Result<ByteBuffer, DecodeError> {
+    let mut decoded_len = (buffer.data.len() / 4) * 3;
+    if buffer.data.len() > 0 && buffer.data[buffer.data.len() - 1] == b'=' {
+        decoded_len -= 1;
+    }
+    if buffer.data.len() > 1 && buffer.data[buffer.data.len() - 2] == b'=' {
+        decoded_len -= 1;
+    }
+
+    let mut decoded = ByteBuffer::new_with_size(decoded_len);
+    for i in 0..decoded_len {
+        let char_offset = (i / 3) * 4;
+        match i % 3 {
+            0 => {
+                let a = buffer.data[char_offset];
+                let b = buffer.data[char_offset + 1];
+                decoded.data[i] =
+                    (base64_char_value(a as char)? << 2) | (base64_char_value(b as char)? >> 4);
+            }
+            1 => {
+                let a = buffer.data[char_offset + 1];
+                let b = buffer.data[char_offset + 2];
+                decoded.data[i] = ((base64_char_value(a as char)? & 0x0F) << 4)
+                    | (base64_char_value(b as char)? >> 2);
+            }
+            _ => {
+                let a = buffer.data[char_offset + 2];
+                let b = buffer.data[char_offset + 3];
+                decoded.data[i] =
+                    ((base64_char_value(a as char)? & 0x03) << 6) | base64_char_value(b as char)?;
+            }
+        }
+    }
+
+    Ok(decoded)
 }

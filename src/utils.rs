@@ -5,6 +5,7 @@ use std::fmt::Display;
 #[derive(Debug)]
 pub enum DecodeType {
     Hex,
+    Base64,
 }
 
 #[derive(Debug)]
