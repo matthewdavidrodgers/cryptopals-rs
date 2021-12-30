@@ -10,3 +10,4 @@ name = "cryptopals_rs"
 path = "src/lib.rs"
 
 [dependencies]
+openssl = "0.10"
