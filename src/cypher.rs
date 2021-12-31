@@ -1,6 +1,8 @@
 use crate::byte_buffer;
 use crate::byte_buffer::ByteBuffer;
 
+use openssl::symm::{Cipher, Crypter, Mode};
+
 const KEYSIZES_TAKEN: usize = 10;
 
 const ENGLISH_AVG_CHAR_FREQUENCIES: [f64; 52] = [
@@ -261,4 +263,20 @@ pub fn decode_rk_xor(buffer: &ByteBuffer) -> DecodeDetails {
     }
 
     best_result.unwrap()
+}
+
+pub fn decode_aes_ecb(cyphertext: &ByteBuffer, key: &ByteBuffer) -> ByteBuffer {
+    let block_size = Cipher::aes_128_ecb().block_size();
+
+    let mut plaintext = ByteBuffer::new_with_size(cyphertext.data.len() + block_size);
+
+    let mut decrypter = Crypter::new(Cipher::aes_128_ecb(), Mode::Decrypt, &key.data, None).unwrap();
+
+    let mut written = decrypter
+        .update(&cyphertext.data, &mut plaintext.data)
+        .unwrap();
+	written += decrypter.finalize(&mut plaintext.data[written..]).unwrap();
+    plaintext.data.truncate(written);
+
+    plaintext
 }
