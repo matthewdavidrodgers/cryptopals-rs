@@ -280,3 +280,32 @@ pub fn decode_aes_ecb(cyphertext: &ByteBuffer, key: &ByteBuffer) -> ByteBuffer {
 
     plaintext
 }
+
+fn aes_cbc_block(block: &ByteBuffer, prev_block: &ByteBuffer, key: &ByteBuffer, mode: Mode) -> ByteBuffer {
+    let mut output = ByteBuffer::new_with_size(block.data.len() + Cipher::aes_128_ecb().block_size());
+    let mut crypter = Crypter::new(Cipher::aes_128_ecb(), mode, &key.data, None).unwrap();
+    crypter.pad(false);
+
+    let written = crypter.update(&block.data, &mut output.data).unwrap();
+    output.data.truncate(written);
+
+    output.xor_with(prev_block);
+
+    output
+}
+
+pub fn aes_cbc(input: &ByteBuffer, key: &ByteBuffer, iv: &ByteBuffer, mode: Mode) -> ByteBuffer {
+    let block_size = Cipher::aes_128_ecb().block_size();
+
+    let mut output = ByteBuffer::new_with_size(input.data.len());
+
+    let mut prev_block = iv.clone();
+    for chunk in input.data.chunks(block_size) {
+        let block = ByteBuffer::from_slice(chunk);
+        let output_block = aes_cbc_block(&block, &prev_block, key, mode);
+        output.data = [output.data, output_block.data].concat();
+        prev_block = block.clone();
+    }
+
+    output
+}

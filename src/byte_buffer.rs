@@ -41,6 +41,12 @@ impl ByteBuffer {
         buf
     }
 
+    pub fn from_slice(slice: &[u8]) -> ByteBuffer {
+        ByteBuffer {
+            data: slice.to_vec()
+        }
+    }
+
     pub fn from_file(filename: &str) -> ByteBuffer {
         let file_contents =
             fs::read_to_string(filename).expect("Could not read buffer contents from file");
