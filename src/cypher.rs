@@ -1,3 +1,4 @@
+use rand::prelude::*;
 use crate::byte_buffer;
 use crate::byte_buffer::ByteBuffer;
 
@@ -59,6 +60,12 @@ const ENGLISH_AVG_CHAR_FREQUENCIES: [f64; 52] = [
     0.019913847 * 0.003,
     0.000746517 * 0.003,
 ];
+
+#[derive(Debug, PartialEq)]
+pub enum BlockMode {
+    ECB,
+    CBC,
+}
 
 #[derive(Clone)]
 pub struct DecodeDetails {
@@ -281,7 +288,7 @@ pub fn decode_aes_ecb(cyphertext: &ByteBuffer, key: &ByteBuffer) -> ByteBuffer {
     plaintext
 }
 
-fn aes_cbc_block(block: &ByteBuffer, prev_block: &ByteBuffer, key: &ByteBuffer, mode: Mode) -> ByteBuffer {
+fn aes_block(block: &ByteBuffer, key: &ByteBuffer, mode: Mode) -> ByteBuffer {
     let mut output = ByteBuffer::new_with_size(block.data.len() + Cipher::aes_128_ecb().block_size());
     let mut crypter = Crypter::new(Cipher::aes_128_ecb(), mode, &key.data, None).unwrap();
     crypter.pad(false);
@@ -289,23 +296,76 @@ fn aes_cbc_block(block: &ByteBuffer, prev_block: &ByteBuffer, key: &ByteBuffer, 
     let written = crypter.update(&block.data, &mut output.data).unwrap();
     output.data.truncate(written);
 
-    output.xor_with(prev_block);
+    output
+}
+
+pub fn aes_ecb(input: &ByteBuffer, key: &ByteBuffer, mode: Mode) -> ByteBuffer {
+    let block_size = Cipher::aes_128_ecb().block_size();
+    
+    let mut output = ByteBuffer::new_with_capacity(input.data.len());
+    output.pad_for_blocksize(block_size);
+    
+    for chunk in input.data.chunks(block_size) {
+        let mut block = ByteBuffer::from_slice(chunk);
+        block.pad_for_blocksize(block_size);
+
+        let output_block = aes_block(&block, key, mode);
+        output.data = [output.data, output_block.data].concat();
+    }
 
     output
 }
 
 pub fn aes_cbc(input: &ByteBuffer, key: &ByteBuffer, iv: &ByteBuffer, mode: Mode) -> ByteBuffer {
     let block_size = Cipher::aes_128_ecb().block_size();
-
-    let mut output = ByteBuffer::new_with_size(input.data.len());
-
+    
+    let mut output = ByteBuffer::new_with_capacity(input.data.len());
+    output.pad_for_blocksize(block_size);
+    
     let mut prev_block = iv.clone();
     for chunk in input.data.chunks(block_size) {
-        let block = ByteBuffer::from_slice(chunk);
-        let output_block = aes_cbc_block(&block, &prev_block, key, mode);
+        let mut block = ByteBuffer::from_slice(chunk);
+        block.pad_for_blocksize(block_size);
+
+        let output_block = match mode {
+            Mode::Encrypt => {
+                block.xor_with(&prev_block);   
+                let out = aes_block(&block, key, mode);
+                prev_block = out.clone();
+                out
+            },
+            Mode::Decrypt => {
+                let mut out = aes_block(&block, key, mode);
+                out.xor_with(&prev_block);
+                prev_block = block.clone();
+                out
+            }
+        };
+
         output.data = [output.data, output_block.data].concat();
-        prev_block = block.clone();
     }
 
     output
+}
+
+pub fn encryption_oracle(plaintext: &ByteBuffer) -> (ByteBuffer, BlockMode) {
+    let mut rng = rand::thread_rng();
+
+    let rand_key = ByteBuffer::from_rand_bytes(16);
+    let rand_iv = ByteBuffer::from_rand_bytes(16);
+    let rand_prepend = ByteBuffer::from_rand_bytes(rng.gen_range(5..11));
+    let rand_append = ByteBuffer::from_rand_bytes(rng.gen_range(5..11));
+
+    let adjusted_plaintext = ByteBuffer {
+        data: [&rand_prepend.data[..], &plaintext.data[..], &rand_append.data[..]].concat(),
+    };
+
+    let mode = if random() { BlockMode::ECB } else { BlockMode::CBC };
+
+    let output = match mode {
+        BlockMode::ECB => aes_ecb(&adjusted_plaintext, &rand_key, Mode::Encrypt),
+        BlockMode::CBC => aes_cbc(&adjusted_plaintext, &rand_key, &rand_iv, Mode::Encrypt),
+    };
+
+    (output, mode)
 }

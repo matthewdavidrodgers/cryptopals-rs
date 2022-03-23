@@ -1,5 +1,7 @@
 use std::fs;
 use std::str;
+use rand::prelude::*;
+use rand::distributions;
 
 #[derive(Clone)]
 pub struct ByteBuffer {
@@ -54,6 +56,14 @@ impl ByteBuffer {
         ByteBuffer::from_ascii(&file_contents)
     }
 
+    pub fn from_rand_bytes(bytes: usize) -> ByteBuffer {
+        let rng = thread_rng();
+
+        ByteBuffer {
+            data: rng.sample_iter(distributions::Standard).take(bytes).collect()
+        }
+    }
+
     pub fn remove_all(&mut self, byte: u8) {
         self.data.retain(|b| *b != byte);
     }
@@ -79,6 +89,22 @@ impl ByteBuffer {
             self.data[i] = self.data[i] ^ other.data[other_i];
             other_i = (other_i + 1) % other.data.len();
         }
+    }
+
+    pub fn dupe_blocks(&self, blocksize: usize) -> usize {
+        let mut dupe_blocks = 0;
+
+        for x in 0..((self.data.len() / blocksize) - 1) {
+            for y in (x + 1)..(self.data.len() / blocksize) {
+                let block_a = &self.data[(x * blocksize)..((x + 1) * blocksize)];
+                let block_b = &self.data[(y * blocksize)..((y + 1) * blocksize)];
+                if block_a.iter().zip(block_b).all(|(a, b)| *a == *b) {
+                    dupe_blocks += 1;
+                }
+            }
+        }
+
+        dupe_blocks
     }
 
     pub fn to_string(&self, format: ByteBufferDisplayFormat) -> String {

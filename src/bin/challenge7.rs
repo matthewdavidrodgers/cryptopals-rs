@@ -1,3 +1,4 @@
+use openssl::symm::Mode;
 use cryptopals_rs::base64;
 use cryptopals_rs::byte_buffer::{ByteBuffer, ByteBufferDisplayFormat};
 use cryptopals_rs::cypher;
@@ -9,7 +10,7 @@ fn main() {
 
     let key = ByteBuffer::from_ascii("YELLOW SUBMARINE");
 
-    let plaintext = cypher::decode_aes_ecb(&cyphertext, &key);
+    let plaintext = cypher::aes_ecb(&cyphertext, &key, Mode::Decrypt);
 
     println!("{}", plaintext.to_string(ByteBufferDisplayFormat::String));
 }
