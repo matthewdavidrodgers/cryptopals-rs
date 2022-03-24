@@ -7,23 +7,13 @@ const BLOCK_SIZE: usize = 16;
 fn main() {
     let contents = fs::read_to_string("./src/bin/challenge8.txt").unwrap();
 
-    let mut most_dupes: Option<(usize, ByteBuffer)> = None;
+    let mut most_dupes: Option<(usize, Vec<u8>)> = None;
 
     for line in contents.lines() {
-        let mut buf = ByteBuffer::from_ascii(line);
+        let mut buf = line.as_bytes().to_vec();
         hex::decode_in_place(&mut buf).unwrap();
 
-        let mut dupe_blocks = 0;
-
-        for x in 0..((buf.data.len() / BLOCK_SIZE) - 1) {
-            for y in (x + 1)..(buf.data.len() / BLOCK_SIZE) {
-                let block_a = &buf.data[(x * BLOCK_SIZE)..((x + 1) * BLOCK_SIZE)];
-                let block_b = &buf.data[(y * BLOCK_SIZE)..((y + 1) * BLOCK_SIZE)];
-                if block_a.iter().zip(block_b).all(|(a, b)| *a == *b) {
-                    dupe_blocks += 1;
-                }
-            }
-        }
+        let dupe_blocks = buf.dupe_blocks(BLOCK_SIZE);
 
         if let Some((most_dupe_count, _)) = most_dupes {
             if most_dupe_count < dupe_blocks {

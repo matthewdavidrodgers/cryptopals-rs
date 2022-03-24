@@ -1,103 +1,42 @@
-use std::fs;
-use std::str;
 use rand::prelude::*;
 use rand::distributions;
 
-#[derive(Clone)]
-pub struct ByteBuffer {
-    pub data: Vec<u8>,
+pub trait ByteBuffer {
+    fn from_rand_bytes(num_bytes: usize) -> Self;
+    fn pad_for_blocksize(&mut self, blocksize: usize);
+    fn xor_with(&mut self, other: &Self);
+    fn dupe_blocks(&self, blocksize: usize) -> usize;
+    fn to_string(&self, format: ByteBufferDisplayFormat) -> String;
 }
 
-#[derive(PartialEq, Eq)]
-pub enum ByteBufferDisplayFormat {
-    String,
-    Decimal,
-    Hex,
-    Grid,
-    GridAscii,
-}
-
-impl ByteBuffer {
-    pub fn new() -> ByteBuffer {
-        ByteBuffer { data: vec![] }
-    }
-
-    pub fn new_with_size(size: usize) -> ByteBuffer {
-        ByteBuffer {
-            data: vec![0; size],
-        }
-    }
-
-    pub fn new_with_capacity(size: usize) -> ByteBuffer {
-        ByteBuffer {
-            data: Vec::with_capacity(size),
-        }
-    }
-
-    pub fn from_ascii(ascii: &str) -> ByteBuffer {
-        let mut buf = ByteBuffer::new_with_capacity(ascii.len());
-        for c in ascii.bytes() {
-            buf.data.push(c);
-        }
-
-        buf
-    }
-
-    pub fn from_slice(slice: &[u8]) -> ByteBuffer {
-        ByteBuffer {
-            data: slice.to_vec()
-        }
-    }
-
-    pub fn from_file(filename: &str) -> ByteBuffer {
-        let file_contents =
-            fs::read_to_string(filename).expect("Could not read buffer contents from file");
-
-        ByteBuffer::from_ascii(&file_contents)
-    }
-
-    pub fn from_rand_bytes(bytes: usize) -> ByteBuffer {
+impl ByteBuffer for Vec<u8> {
+    fn from_rand_bytes(num_bytes: usize) -> Vec<u8> {
         let rng = thread_rng();
+        rng.sample_iter(distributions::Standard).take(num_bytes).collect()
+    }
 
-        ByteBuffer {
-            data: rng.sample_iter(distributions::Standard).take(bytes).collect()
+    fn pad_for_blocksize(&mut self, blocksize: usize) {
+        if self.len() % blocksize != 0 {
+            let pad_by = blocksize - (self.len() % blocksize);
+            self.append(&mut vec![pad_by as u8; pad_by]);
         }
     }
 
-    pub fn remove_all(&mut self, byte: u8) {
-        self.data.retain(|b| *b != byte);
-    }
-
-    pub fn pad_for_blocksize(&mut self, blocksize: usize) {
-        if self.data.len() % blocksize != 0 {
-            let pad_by = blocksize - (self.data.len() % blocksize);
-            self.data.append(&mut vec![pad_by as u8; pad_by]);
-        }
-    }
-
-    pub fn slice(&self, start: usize, end: usize) -> ByteBuffer {
-        assert!(start < end);
-
-        ByteBuffer {
-            data: self.data[start..end].to_vec(),
-        }
-    }
-
-    pub fn xor_with(&mut self, other: &ByteBuffer) {
+    fn xor_with(&mut self, other: &Vec<u8>) {
         let mut other_i = 0;
-        for i in 0..self.data.len() {
-            self.data[i] = self.data[i] ^ other.data[other_i];
-            other_i = (other_i + 1) % other.data.len();
+        for i in 0..self.len() {
+            self[i] = self[i] ^ other[other_i];
+            other_i = (other_i + 1) % other.len();
         }
     }
 
-    pub fn dupe_blocks(&self, blocksize: usize) -> usize {
+    fn dupe_blocks(&self, blocksize: usize) -> usize {
         let mut dupe_blocks = 0;
 
-        for x in 0..((self.data.len() / blocksize) - 1) {
-            for y in (x + 1)..(self.data.len() / blocksize) {
-                let block_a = &self.data[(x * blocksize)..((x + 1) * blocksize)];
-                let block_b = &self.data[(y * blocksize)..((y + 1) * blocksize)];
+        for x in 0..((self.len() / blocksize) - 1) {
+            for y in (x + 1)..(self.len() / blocksize) {
+                let block_a = &self[(x * blocksize)..((x + 1) * blocksize)];
+                let block_b = &self[(y * blocksize)..((y + 1) * blocksize)];
                 if block_a.iter().zip(block_b).all(|(a, b)| *a == *b) {
                     dupe_blocks += 1;
                 }
@@ -107,27 +46,27 @@ impl ByteBuffer {
         dupe_blocks
     }
 
-    pub fn to_string(&self, format: ByteBufferDisplayFormat) -> String {
+    fn to_string(&self, format: ByteBufferDisplayFormat) -> String {
         match &format {
             ByteBufferDisplayFormat::Grid | ByteBufferDisplayFormat::GridAscii => {
                 let mut s = String::new();
 
                 let mut block = 0;
-                while block * 0x10 < self.data.len() {
-                    let block_end = if (block + 1) * 0x10 < self.data.len() {
+                while block * 0x10 < self.len() {
+                    let block_end = if (block + 1) * 0x10 < self.len() {
                         (block + 1) * 0x10
                     } else {
-                        self.data.len()
+                        self.len()
                     };
                     s.push_str(&format!("{:07x}", block * 0x10));
 
                     for i in (block * 0x10)..block_end {
-                        s.push_str(&format!(" {:02x}", self.data[i]));
+                        s.push_str(&format!(" {:02x}", self[i]));
                     }
                     if format == ByteBufferDisplayFormat::GridAscii {
                         s.push_str("\n       ");
                         for i in (block * 0x10)..block_end {
-                            let val = self.data[i];
+                            let val = self[i];
                             if val >= 32 && val <= 126 {
                                 s.push_str(&format!("  {}", val as char));
                             } else if val == 10 {
@@ -147,8 +86,8 @@ impl ByteBuffer {
             ByteBufferDisplayFormat::Decimal => {
                 let mut s = String::from("[");
 
-                for i in 0..self.data.len() {
-                    let val = self.data[i];
+                for i in 0..self.len() {
+                    let val = self[i];
 
                     if i > 0 {
                         s.push_str(&format!(",{}", val));
@@ -157,14 +96,14 @@ impl ByteBuffer {
                     }
                 }
 
-                s.push_str(&format!("] (len {})", self.data.len()));
+                s.push_str(&format!("] (len {})", self.len()));
                 s
             }
             ByteBufferDisplayFormat::Hex => {
                 let mut s = String::from("[");
 
-                for i in 0..self.data.len() {
-                    let val = self.data[i];
+                for i in 0..self.len() {
+                    let val = self[i];
 
                     if i > 0 {
                         s.push_str(&format!(",{:x}", val));
@@ -173,12 +112,11 @@ impl ByteBuffer {
                     }
                 }
 
-                s.push_str(&format!("] (len {})", self.data.len()));
+                s.push_str(&format!("] (len {})", self.len()));
                 s
             }
             ByteBufferDisplayFormat::String => {
                 let char_pieces: Vec<_> = self
-                    .data
                     .iter()
                     .map(|c| {
                         let mut utf8_buf = [0; 4];
@@ -193,23 +131,32 @@ impl ByteBuffer {
     }
 }
 
-pub fn xor(a: &ByteBuffer, b: &ByteBuffer) -> ByteBuffer {
+#[derive(PartialEq, Eq)]
+pub enum ByteBufferDisplayFormat {
+    String,
+    Decimal,
+    Hex,
+    Grid,
+    GridAscii,
+}
+
+pub fn xor(a: &Vec<u8>, b: &Vec<u8>) -> Vec<u8> {
     let mut result = a.clone();
     result.xor_with(b);
 
     result
 }
 
-pub fn distance(a: &ByteBuffer, b: &ByteBuffer) -> usize {
-    let len = if a.data.len() > b.data.len() {
-        b.data.len()
+pub fn distance(a: &Vec<u8>, b: &Vec<u8>) -> usize {
+    let len = if a.len() > b.len() {
+        b.len()
     } else {
-        a.data.len()
+        a.len()
     };
 
     let mut dist = 0usize;
     for i in 0..len {
-        let mut xored_byte = a.data[i] & b.data[i];
+        let mut xored_byte = a[i] & b[i];
         while xored_byte != 0 {
             dist += (xored_byte & 0x01) as usize;
             xored_byte >>= 1;

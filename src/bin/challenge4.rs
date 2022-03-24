@@ -7,10 +7,10 @@ use std::fs;
 fn main() {
     let contents = fs::read_to_string("./src/bin/challenge4.txt").unwrap();
 
-    let mut best_line_details: Option<(DecodeDetails, ByteBuffer)> = None;
+    let mut best_line_details: Option<(DecodeDetails, Vec<u8>)> = None;
 
     for line in contents.lines() {
-        let cyphertext = hex::decode(&ByteBuffer::from_ascii(line)).unwrap();
+        let cyphertext = hex::decode(&line.as_bytes().to_vec()).unwrap();
         let line_details = cypher::decode_sb_xor(&cyphertext);
 
         if line_details.score >= 0.0 {
@@ -28,7 +28,7 @@ fn main() {
 
     println!(
         "decoded using key {} ({})",
-        details.key_buffer.data[0] as char, details.key_buffer.data[0] as char
+        details.key_buffer[0] as char, details.key_buffer[0] as char
     );
     println!("score {}", details.score);
     println!(

@@ -1,4 +1,3 @@
-use crate::byte_buffer::ByteBuffer;
 use crate::utils::{DecodeError, DecodeType};
 use std::cmp::Ordering;
 
@@ -27,15 +26,15 @@ impl Base64DecodeState {
     }
 }
 
-pub fn encode(buffer: &ByteBuffer) -> ByteBuffer {
+pub fn encode(buffer: &Vec<u8>) -> Vec<u8> {
     use Base64DecodeState::*;
 
-    let mut encoded_size = (buffer.data.len() / 3) * 4;
-    if buffer.data.len() % 3 != 0 {
+    let mut encoded_size = (buffer.len() / 3) * 4;
+    if buffer.len() % 3 != 0 {
         encoded_size += 4;
     }
 
-    let mut encoded = ByteBuffer::new_with_size(encoded_size);
+    let mut encoded = vec![0u8; encoded_size];
 
     let mut state = Base64DecodeState::A;
 
@@ -43,9 +42,9 @@ pub fn encode(buffer: &ByteBuffer) -> ByteBuffer {
     let mut encoded_index = 0;
 
     loop {
-        let curr_byte = buffer.data[byte_index];
-        let next_byte = if byte_index + 1 < buffer.data.len() {
-            buffer.data[byte_index + 1]
+        let curr_byte = buffer[byte_index];
+        let next_byte = if byte_index + 1 < buffer.len() {
+            buffer[byte_index + 1]
         } else {
             0
         };
@@ -66,11 +65,11 @@ pub fn encode(buffer: &ByteBuffer) -> ByteBuffer {
             }
         };
 
-        encoded.data[encoded_index] = BASE64_CHAR_INDEXES[char_index] as u8;
+        encoded[encoded_index] = BASE64_CHAR_INDEXES[char_index] as u8;
         encoded_index += 1;
 
         if matches!(
-            (&state, byte_index.cmp(&buffer.data.len())),
+            (&state, byte_index.cmp(&buffer.len())),
             (B | C | D, Ordering::Equal)
         ) {
             break;
@@ -89,11 +88,11 @@ pub fn encode(buffer: &ByteBuffer) -> ByteBuffer {
         // }
     }
 
-    if buffer.data.len() % 3 == 2 {
-        encoded.data[encoded_index] = b'=';
-    } else if buffer.data.len() % 3 == 1 {
-        encoded.data[encoded_index] = b'=';
-        encoded.data[encoded_index + 1] = b'=';
+    if buffer.len() % 3 == 2 {
+        encoded[encoded_index] = b'=';
+    } else if buffer.len() % 3 == 1 {
+        encoded[encoded_index] = b'=';
+        encoded[encoded_index + 1] = b'=';
     }
 
     encoded
@@ -110,35 +109,35 @@ fn base64_char_value(c: char) -> Result<u8, DecodeError> {
     }
 }
 
-pub fn decode(buffer: &ByteBuffer) -> Result<ByteBuffer, DecodeError> {
-    let mut decoded_len = (buffer.data.len() / 4) * 3;
-    if buffer.data.len() > 0 && buffer.data[buffer.data.len() - 1] == b'=' {
+pub fn decode(buffer: &Vec<u8>) -> Result<Vec<u8>, DecodeError> {
+    let mut decoded_len = (buffer.len() / 4) * 3;
+    if buffer.len() > 0 && buffer[buffer.len() - 1] == b'=' {
         decoded_len -= 1;
     }
-    if buffer.data.len() > 1 && buffer.data[buffer.data.len() - 2] == b'=' {
+    if buffer.len() > 1 && buffer[buffer.len() - 2] == b'=' {
         decoded_len -= 1;
     }
 
-    let mut decoded = ByteBuffer::new_with_size(decoded_len);
+    let mut decoded = vec![0u8; decoded_len];
     for i in 0..decoded_len {
         let char_offset = (i / 3) * 4;
         match i % 3 {
             0 => {
-                let a = buffer.data[char_offset];
-                let b = buffer.data[char_offset + 1];
-                decoded.data[i] =
+                let a = buffer[char_offset];
+                let b = buffer[char_offset + 1];
+                decoded[i] =
                     (base64_char_value(a as char)? << 2) | (base64_char_value(b as char)? >> 4);
             }
             1 => {
-                let a = buffer.data[char_offset + 1];
-                let b = buffer.data[char_offset + 2];
-                decoded.data[i] = ((base64_char_value(a as char)? & 0x0F) << 4)
+                let a = buffer[char_offset + 1];
+                let b = buffer[char_offset + 2];
+                decoded[i] = ((base64_char_value(a as char)? & 0x0F) << 4)
                     | (base64_char_value(b as char)? >> 2);
             }
             _ => {
-                let a = buffer.data[char_offset + 2];
-                let b = buffer.data[char_offset + 3];
-                decoded.data[i] =
+                let a = buffer[char_offset + 2];
+                let b = buffer[char_offset + 3];
+                decoded[i] =
                     ((base64_char_value(a as char)? & 0x03) << 6) | base64_char_value(b as char)?;
             }
         }

@@ -1,6 +1,5 @@
 use rand::prelude::*;
-use crate::byte_buffer;
-use crate::byte_buffer::ByteBuffer;
+use crate::byte_buffer::{self, ByteBuffer};
 
 use openssl::symm::{Cipher, Crypter, Mode};
 
@@ -69,8 +68,8 @@ pub enum BlockMode {
 
 #[derive(Clone)]
 pub struct DecodeDetails {
-    pub key_buffer: ByteBuffer,
-    pub plaintext_buffer: ByteBuffer,
+    pub key_buffer: Vec<u8>,
+    pub plaintext_buffer: Vec<u8>,
     pub score: f64,
 }
 
@@ -80,12 +79,12 @@ struct Keysize {
     score: f64,
 }
 
-fn score_buffer_as_english(buffer: &ByteBuffer) -> f64 {
+fn score_buffer_as_english(buffer: &Vec<u8>) -> f64 {
     let mut buffer_char_counts = [0; 52];
 
     let mut countable_chars = 0;
 
-    for byte in &buffer.data {
+    for byte in buffer {
         let char_index = match byte {
             b'A'..=b'Z' => {
                 countable_chars += 1;
@@ -119,19 +118,19 @@ fn score_buffer_as_english(buffer: &ByteBuffer) -> f64 {
         score += char_score.abs();
     }
 
-    if buffer.data.len() != countable_chars {
-        score *= (buffer.data.len() - countable_chars) as f64;
+    if buffer.len() != countable_chars {
+        score *= (buffer.len() - countable_chars) as f64;
     }
 
     score
 }
 
-pub fn decode_sb_xor(cyphertext: &ByteBuffer) -> DecodeDetails {
+pub fn decode_sb_xor(cyphertext: &Vec<u8>) -> DecodeDetails {
     let mut best_details: Option<DecodeDetails> = None;
 
-    let mut key_buffer = ByteBuffer::new_with_size(1);
+    let mut key_buffer = vec![0u8];
     for key in 0u8..=255 {
-        key_buffer.data[0] = key;
+        key_buffer[0] = key;
 
         let decoded_buffer = byte_buffer::xor(cyphertext, &key_buffer);
         let current_score = score_buffer_as_english(&decoded_buffer);
@@ -162,20 +161,20 @@ fn permutations(x: usize) -> usize {
     (((x - 1) * (x - 1)) + (x - 1)) / 2
 }
 
-fn pick_rk_xor_keysizes(buffer: &ByteBuffer) -> Vec<Keysize> {
+fn pick_rk_xor_keysizes(buffer: &Vec<u8>) -> Vec<Keysize> {
     let mut keysizes: Vec<Keysize> = Vec::with_capacity(KEYSIZES_TAKEN);
-    let max_keysize = if (buffer.data.len() / 2) < 40 {
-        buffer.data.len() / 2
+    let max_keysize = if (buffer.len() / 2) < 40 {
+        buffer.len() / 2
     } else {
         40
     };
 
     for keysize in 2..=max_keysize {
-        let num_blocks = buffer.data.len() / keysize;
-        let mut blocks: Vec<ByteBuffer> = Vec::with_capacity(num_blocks);
+        let num_blocks = buffer.len() / keysize;
+        let mut blocks: Vec<Vec<u8>> = Vec::with_capacity(num_blocks);
 
         for i in 0..num_blocks {
-            blocks.push(buffer.slice(i * keysize, (i + 1) * keysize));
+            blocks.push(buffer[(i * keysize)..((i + 1) * keysize)].to_vec());
         }
 
         let mut block_dis = 0.0;
@@ -212,14 +211,14 @@ fn pick_rk_xor_keysizes(buffer: &ByteBuffer) -> Vec<Keysize> {
     keysizes
 }
 
-fn break_and_transpose_blocks(buffer: &ByteBuffer, blocksize: usize) -> Vec<ByteBuffer> {
+fn break_and_transpose_blocks(buffer: &Vec<u8>, blocksize: usize) -> Vec<Vec<u8>> {
     let mut blocks = vec![];
 
     for x in 0..blocksize {
-        let mut block = ByteBuffer::new();
+        let mut block = vec![];
         let mut y = 0;
-        while (y + x) < buffer.data.len() {
-            block.data.push(buffer.data[y + x]);
+        while (y + x) < buffer.len() {
+            block.push(buffer[y + x]);
             y += blocksize;
         }
         blocks.push(block);
@@ -228,16 +227,16 @@ fn break_and_transpose_blocks(buffer: &ByteBuffer, blocksize: usize) -> Vec<Byte
     blocks
 }
 
-fn decode_rk_xor_for_size(buffer: &ByteBuffer, keysize: usize) -> DecodeDetails {
+fn decode_rk_xor_for_size(buffer: &Vec<u8>, keysize: usize) -> DecodeDetails {
     let transposed_blocks = break_and_transpose_blocks(buffer, keysize);
     let block_details: Vec<_> = transposed_blocks
         .iter()
         .map(|block| decode_sb_xor(block))
         .collect();
 
-    let mut key_buffer = ByteBuffer::new_with_capacity(keysize);
+    let mut key_buffer = Vec::with_capacity(keysize);
     for detail in block_details {
-        key_buffer.data.push(detail.key_buffer.data[0]);
+        key_buffer.push(detail.key_buffer[0]);
     }
 
     let plaintext_buffer = byte_buffer::xor(buffer, &key_buffer);
@@ -250,7 +249,7 @@ fn decode_rk_xor_for_size(buffer: &ByteBuffer, keysize: usize) -> DecodeDetails 
     }
 }
 
-pub fn decode_rk_xor(buffer: &ByteBuffer) -> DecodeDetails {
+pub fn decode_rk_xor(buffer: &Vec<u8>) -> DecodeDetails {
     let sizes = pick_rk_xor_keysizes(buffer);
 
     let mut best_result: Option<DecodeDetails> = None;
@@ -272,59 +271,59 @@ pub fn decode_rk_xor(buffer: &ByteBuffer) -> DecodeDetails {
     best_result.unwrap()
 }
 
-pub fn decode_aes_ecb(cyphertext: &ByteBuffer, key: &ByteBuffer) -> ByteBuffer {
+pub fn decode_aes_ecb(cyphertext: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
     let block_size = Cipher::aes_128_ecb().block_size();
 
-    let mut plaintext = ByteBuffer::new_with_size(cyphertext.data.len() + block_size);
+    let mut plaintext = vec![0u8; cyphertext.len() + block_size];
 
-    let mut decrypter = Crypter::new(Cipher::aes_128_ecb(), Mode::Decrypt, &key.data, None).unwrap();
+    let mut decrypter = Crypter::new(Cipher::aes_128_ecb(), Mode::Decrypt, &key, None).unwrap();
 
     let mut written = decrypter
-        .update(&cyphertext.data, &mut plaintext.data)
+        .update(&cyphertext, &mut plaintext)
         .unwrap();
-	written += decrypter.finalize(&mut plaintext.data[written..]).unwrap();
-    plaintext.data.truncate(written);
+	written += decrypter.finalize(&mut plaintext[written..]).unwrap();
+    plaintext.truncate(written);
 
     plaintext
 }
 
-fn aes_block(block: &ByteBuffer, key: &ByteBuffer, mode: Mode) -> ByteBuffer {
-    let mut output = ByteBuffer::new_with_size(block.data.len() + Cipher::aes_128_ecb().block_size());
-    let mut crypter = Crypter::new(Cipher::aes_128_ecb(), mode, &key.data, None).unwrap();
+fn aes_block(block: &Vec<u8>, key: &Vec<u8>, mode: Mode) -> Vec<u8> {
+    let mut output = vec![0u8; block.len() + Cipher::aes_128_ecb().block_size()];
+    let mut crypter = Crypter::new(Cipher::aes_128_ecb(), mode, &key, None).unwrap();
     crypter.pad(false);
 
-    let written = crypter.update(&block.data, &mut output.data).unwrap();
-    output.data.truncate(written);
+    let written = crypter.update(&block, &mut output).unwrap();
+    output.truncate(written);
 
     output
 }
 
-pub fn aes_ecb(input: &ByteBuffer, key: &ByteBuffer, mode: Mode) -> ByteBuffer {
+pub fn aes_ecb(input: &Vec<u8>, key: &Vec<u8>, mode: Mode) -> Vec<u8> {
     let block_size = Cipher::aes_128_ecb().block_size();
     
-    let mut output = ByteBuffer::new_with_capacity(input.data.len());
+    let mut output = Vec::with_capacity(input.len());
     output.pad_for_blocksize(block_size);
     
-    for chunk in input.data.chunks(block_size) {
-        let mut block = ByteBuffer::from_slice(chunk);
+    for chunk in input.chunks(block_size) {
+        let mut block = chunk.to_vec();
         block.pad_for_blocksize(block_size);
 
         let output_block = aes_block(&block, key, mode);
-        output.data = [output.data, output_block.data].concat();
+        output = [output, output_block].concat();
     }
 
     output
 }
 
-pub fn aes_cbc(input: &ByteBuffer, key: &ByteBuffer, iv: &ByteBuffer, mode: Mode) -> ByteBuffer {
+pub fn aes_cbc(input: &Vec<u8>, key: &Vec<u8>, iv: &Vec<u8>, mode: Mode) -> Vec<u8> {
     let block_size = Cipher::aes_128_ecb().block_size();
     
-    let mut output = ByteBuffer::new_with_capacity(input.data.len());
+    let mut output = Vec::with_capacity(input.len());
     output.pad_for_blocksize(block_size);
     
     let mut prev_block = iv.clone();
-    for chunk in input.data.chunks(block_size) {
-        let mut block = ByteBuffer::from_slice(chunk);
+    for chunk in input.chunks(block_size) {
+        let mut block = chunk.to_vec();
         block.pad_for_blocksize(block_size);
 
         let output_block = match mode {
@@ -342,23 +341,21 @@ pub fn aes_cbc(input: &ByteBuffer, key: &ByteBuffer, iv: &ByteBuffer, mode: Mode
             }
         };
 
-        output.data = [output.data, output_block.data].concat();
+        output = [output, output_block].concat();
     }
 
     output
 }
 
-pub fn encryption_oracle(plaintext: &ByteBuffer) -> (ByteBuffer, BlockMode) {
+pub fn encryption_oracle(plaintext: &Vec<u8>) -> (Vec<u8>, BlockMode) {
     let mut rng = rand::thread_rng();
 
-    let rand_key = ByteBuffer::from_rand_bytes(16);
-    let rand_iv = ByteBuffer::from_rand_bytes(16);
-    let rand_prepend = ByteBuffer::from_rand_bytes(rng.gen_range(5..11));
-    let rand_append = ByteBuffer::from_rand_bytes(rng.gen_range(5..11));
+    let rand_key = Vec::<u8>::from_rand_bytes(16);
+    let rand_iv = Vec::<u8>::from_rand_bytes(16);
+    let rand_prepend = Vec::<u8>::from_rand_bytes(rng.gen_range(5..11));
+    let rand_append = Vec::<u8>::from_rand_bytes(rng.gen_range(5..11));
 
-    let adjusted_plaintext = ByteBuffer {
-        data: [&rand_prepend.data[..], &plaintext.data[..], &rand_append.data[..]].concat(),
-    };
+    let adjusted_plaintext = [&rand_prepend[..], &plaintext[..], &rand_append[..]].concat();
 
     let mode = if random() { BlockMode::ECB } else { BlockMode::CBC };
 
