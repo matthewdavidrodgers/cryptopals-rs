@@ -347,6 +347,16 @@ pub fn aes_cbc(input: &Vec<u8>, key: &Vec<u8>, iv: &Vec<u8>, mode: Mode) -> Vec<
     output
 }
 
+pub fn make_oracle<'a>(secret_content: &'a Vec<u8>) -> Box<dyn Fn(&Vec<u8>) -> Vec<u8> + 'a> {
+    let rand_key = Vec::<u8>::from_rand_bytes(16);
+
+    Box::new(move |known_prepend: &Vec<u8>| {
+        let adjusted_text = [&known_prepend[..], &secret_content[..]].concat();
+
+        aes_ecb(&adjusted_text, &rand_key, Mode::Encrypt)
+    })
+}
+
 pub fn encryption_oracle(plaintext: &Vec<u8>) -> (Vec<u8>, BlockMode) {
     let mut rng = rand::thread_rng();
 
