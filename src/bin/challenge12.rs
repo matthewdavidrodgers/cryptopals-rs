@@ -16,7 +16,6 @@ fn main() {
     let mut decoded = Vec::new();
 
     for byte_index in 0..unknown_encrypted.len() {
-        dbg!(byte_index);
         let target_block = byte_index as usize / 16;
 
         let prepend_with_len = 15 - ((byte_index) % 16);
