@@ -3,6 +3,7 @@ use rand::distributions;
 
 pub trait ByteBuffer {
     fn from_rand_bytes(num_bytes: usize) -> Self;
+    fn is_padded_for_blocksize(&self, blocksize: usize) -> Option<usize>;
     fn pad_for_blocksize(&mut self, blocksize: usize);
     fn xor_with(&mut self, other: &Self);
     fn dupe_blocks(&self, blocksize: usize) -> usize;
@@ -20,6 +21,21 @@ impl ByteBuffer for Vec<u8> {
             let pad_by = blocksize - (self.len() % blocksize);
             self.append(&mut vec![pad_by as u8; pad_by]);
         }
+    }
+
+    fn is_padded_for_blocksize(&self, blocksize: usize) -> Option<usize> {
+        if self.len() == 0 || self.len() % blocksize != 0 {
+                return None;
+        }
+        let padded_by = self[self.len() - 1];
+        if (padded_by as usize) >= blocksize {
+                return None;
+        }
+        if !self.ends_with(&vec![padded_by; padded_by as usize]) {
+                return None;
+        }
+        Some(padded_by as usize)
+
     }
 
     fn xor_with(&mut self, other: &Vec<u8>) {
