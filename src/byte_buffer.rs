@@ -1,5 +1,5 @@
-use rand::prelude::*;
 use rand::distributions;
+use rand::prelude::*;
 
 pub trait ByteBuffer {
     fn from_rand_bytes(num_bytes: usize) -> Self;
@@ -13,7 +13,9 @@ pub trait ByteBuffer {
 impl ByteBuffer for Vec<u8> {
     fn from_rand_bytes(num_bytes: usize) -> Vec<u8> {
         let rng = thread_rng();
-        rng.sample_iter(distributions::Standard).take(num_bytes).collect()
+        rng.sample_iter(distributions::Standard)
+            .take(num_bytes)
+            .collect()
     }
 
     fn pad_for_blocksize(&mut self, blocksize: usize) {
@@ -25,17 +27,16 @@ impl ByteBuffer for Vec<u8> {
 
     fn is_padded_for_blocksize(&self, blocksize: usize) -> Option<usize> {
         if self.len() == 0 || self.len() % blocksize != 0 {
-                return None;
+            return None;
         }
         let padded_by = self[self.len() - 1];
         if (padded_by as usize) >= blocksize {
-                return None;
+            return None;
         }
         if !self.ends_with(&vec![padded_by; padded_by as usize]) {
-                return None;
+            return None;
         }
         Some(padded_by as usize)
-
     }
 
     fn xor_with(&mut self, other: &Vec<u8>) {
@@ -164,11 +165,7 @@ pub fn xor(a: &Vec<u8>, b: &Vec<u8>) -> Vec<u8> {
 }
 
 pub fn distance(a: &Vec<u8>, b: &Vec<u8>) -> usize {
-    let len = if a.len() > b.len() {
-        b.len()
-    } else {
-        a.len()
-    };
+    let len = if a.len() > b.len() { b.len() } else { a.len() };
 
     let mut dist = 0usize;
     for i in 0..len {

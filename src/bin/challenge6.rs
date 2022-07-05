@@ -1,7 +1,7 @@
-use std::fs;
 use cryptopals_rs::base64;
 use cryptopals_rs::cypher;
 use cryptopals_rs::{ByteBuffer, ByteBufferDisplayFormat};
+use std::fs;
 
 fn main() {
     let mut file_contents = fs::read("./src/bin/challenge6.txt").unwrap();

@@ -1,5 +1,5 @@
-use cryptopals_rs::cypher::{self, BlockMode};
 use cryptopals_rs::byte_buffer::ByteBuffer;
+use cryptopals_rs::cypher::{self, BlockMode};
 
 fn main() {
     let buffer = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"

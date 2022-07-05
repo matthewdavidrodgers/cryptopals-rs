@@ -3,8 +3,9 @@ use cryptopals_rs::hex;
 use cryptopals_rs::{ByteBuffer, ByteBufferDisplayFormat};
 
 fn main() {
-    let plaintext = 
-        "Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal".as_bytes().to_vec();
+    let plaintext = "Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal"
+        .as_bytes()
+        .to_vec();
     let key = "ICE".as_bytes().to_vec();
 
     let result = byte_buffer::xor(&plaintext, &key);

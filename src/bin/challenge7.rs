@@ -1,8 +1,8 @@
-use std::fs;
-use openssl::symm::Mode;
 use cryptopals_rs::base64;
 use cryptopals_rs::byte_buffer::{ByteBuffer, ByteBufferDisplayFormat};
 use cryptopals_rs::cypher;
+use openssl::symm::Mode;
+use std::fs;
 
 fn main() {
     let mut file_contents = fs::read("./src/bin/challenge7.txt").unwrap();

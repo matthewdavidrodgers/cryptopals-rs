@@ -1,5 +1,5 @@
-use rand::prelude::*;
 use crate::byte_buffer::{self, ByteBuffer};
+use rand::prelude::*;
 
 use openssl::symm::{Cipher, Crypter, Mode};
 
@@ -278,10 +278,8 @@ pub fn decode_aes_ecb(cyphertext: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
 
     let mut decrypter = Crypter::new(Cipher::aes_128_ecb(), Mode::Decrypt, &key, None).unwrap();
 
-    let mut written = decrypter
-        .update(&cyphertext, &mut plaintext)
-        .unwrap();
-	written += decrypter.finalize(&mut plaintext[written..]).unwrap();
+    let mut written = decrypter.update(&cyphertext, &mut plaintext).unwrap();
+    written += decrypter.finalize(&mut plaintext[written..]).unwrap();
     plaintext.truncate(written);
 
     plaintext
@@ -300,10 +298,10 @@ fn aes_block(block: &Vec<u8>, key: &Vec<u8>, mode: Mode) -> Vec<u8> {
 
 pub fn aes_ecb(input: &Vec<u8>, key: &Vec<u8>, mode: Mode) -> Vec<u8> {
     let block_size = Cipher::aes_128_ecb().block_size();
-    
+
     let mut output = Vec::with_capacity(input.len());
     output.pad_for_blocksize(block_size);
-    
+
     for chunk in input.chunks(block_size) {
         let mut block = chunk.to_vec();
         block.pad_for_blocksize(block_size);
@@ -317,10 +315,10 @@ pub fn aes_ecb(input: &Vec<u8>, key: &Vec<u8>, mode: Mode) -> Vec<u8> {
 
 pub fn aes_cbc(input: &Vec<u8>, key: &Vec<u8>, iv: &Vec<u8>, mode: Mode) -> Vec<u8> {
     let block_size = Cipher::aes_128_ecb().block_size();
-    
+
     let mut output = Vec::with_capacity(input.len());
     output.pad_for_blocksize(block_size);
-    
+
     let mut prev_block = iv.clone();
     for chunk in input.chunks(block_size) {
         let mut block = chunk.to_vec();
@@ -328,11 +326,11 @@ pub fn aes_cbc(input: &Vec<u8>, key: &Vec<u8>, iv: &Vec<u8>, mode: Mode) -> Vec<
 
         let output_block = match mode {
             Mode::Encrypt => {
-                block.xor_with(&prev_block);   
+                block.xor_with(&prev_block);
                 let out = aes_block(&block, key, mode);
                 prev_block = out.clone();
                 out
-            },
+            }
             Mode::Decrypt => {
                 let mut out = aes_block(&block, key, mode);
                 out.xor_with(&prev_block);
@@ -347,11 +345,25 @@ pub fn aes_cbc(input: &Vec<u8>, key: &Vec<u8>, iv: &Vec<u8>, mode: Mode) -> Vec<
     output
 }
 
-pub fn make_oracle<'a>(secret_content: &'a Vec<u8>) -> Box<dyn Fn(&Vec<u8>) -> Vec<u8> + 'a> {
+pub enum OracleMode {
+    Simple,
+    Prefixing,
+}
+
+pub fn make_oracle<'a>(
+    secret_content: &'a Vec<u8>,
+    mode: OracleMode,
+) -> Box<dyn Fn(&Vec<u8>) -> Vec<u8> + 'a> {
+    let mut rng = rand::thread_rng();
+
     let rand_key = Vec::<u8>::from_rand_bytes(16);
+    let prefix = match mode {
+        OracleMode::Simple => vec![],
+        OracleMode::Prefixing => Vec::<u8>::from_rand_bytes(rng.gen_range(5..20)),
+    };
 
     Box::new(move |known_prepend: &Vec<u8>| {
-        let adjusted_text = [&known_prepend[..], &secret_content[..]].concat();
+        let adjusted_text = [&prefix[..], &known_prepend[..], &secret_content[..]].concat();
 
         aes_ecb(&adjusted_text, &rand_key, Mode::Encrypt)
     })
@@ -367,7 +379,11 @@ pub fn encryption_oracle(plaintext: &Vec<u8>) -> (Vec<u8>, BlockMode) {
 
     let adjusted_plaintext = [&rand_prepend[..], &plaintext[..], &rand_append[..]].concat();
 
-    let mode = if random() { BlockMode::ECB } else { BlockMode::CBC };
+    let mode = if random() {
+        BlockMode::ECB
+    } else {
+        BlockMode::CBC
+    };
 
     let output = match mode {
         BlockMode::ECB => aes_ecb(&adjusted_plaintext, &rand_key, Mode::Encrypt),
