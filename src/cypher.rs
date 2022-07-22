@@ -359,7 +359,10 @@ pub fn make_oracle<'a>(
     let rand_key = Vec::<u8>::from_rand_bytes(16);
     let prefix = match mode {
         OracleMode::Simple => vec![],
-        OracleMode::Prefixing => Vec::<u8>::from_rand_bytes(rng.gen_range(5..20)),
+        OracleMode::Prefixing => {
+            let prefix_len = rng.gen_range(5..15);
+            Vec::<u8>::from_rand_bytes(prefix_len)
+        }
     };
 
     Box::new(move |known_prepend: &Vec<u8>| {
